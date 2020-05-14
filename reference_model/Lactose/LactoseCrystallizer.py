@@ -12,7 +12,7 @@ from reference_model.Lactose.LactoseModel import LactoseModel
 
 
 class LactoseCrystallizer:
-    def __init__(self, domain: Domain, save_intermediates=False, mute=True):
+    def __init__(self, domain: Domain, save_intermediates=False, verbose=True):
         # Create domain
         self.domain = domain
 
@@ -44,7 +44,7 @@ class LactoseCrystallizer:
         self.noise_level = None
         self.step_size = None
         self.save_intermediates = save_intermediates
-        self.mute = mute
+        self.verbose = verbose
 
     def start_new_batch(self, N0, C0, T0, step_size, noise_level=1):
         # Initial conditions
@@ -59,10 +59,10 @@ class LactoseCrystallizer:
         self.output = None
         self.noise_level = noise_level
         self.initialized = True
-        if not self.mute:
+        if not self.verbose:
             print('New batch started')
-        measurement_object = self.model.measurement_object(np.expand_dims(self.t0_sim, axis=1),
-                                                           np.expand_dims(self.x0, axis=1),
+        measurement_object = self.model.measurement_object(self.t0_sim,
+                                                           self.x0,
                                                            noise_level=self.noise_level)
         return measurement_object
 
@@ -70,6 +70,7 @@ class LactoseCrystallizer:
         if self.initialized:
             # Run simulation
             self.output = self.model.solve_ode(t0=self.t0_sim, timestep=self.step_size, x0=self.x_sim, z=[z])
+            print(self.output)
             # Set new simulation parameters
             self.x_sim = self.output.y[:, -1]
             self.t0_sim = self.output.t[-1]
@@ -77,11 +78,11 @@ class LactoseCrystallizer:
             if self.save_intermediates:
                 self.x_col.append(self.output.y)
                 self.t_col.append(self.output.t)
-            if not self.mute:
+            if not self.verbose:
                 print(self.output.message)
             measurement_object = self.model.measurement_object(self.output.t, self.output.y,
                                                                noise_level=self.noise_level)
             return measurement_object
         else:
-            if not self.mute:
+            if not self.verbose:
                 print('Batch not initialized!')

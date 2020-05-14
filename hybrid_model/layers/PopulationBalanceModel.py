@@ -41,6 +41,7 @@ class PopulationBalanceModel:
         # Run agglomeration contribution calculation
         self.agglomeration_contribution = self.agglomeration_constant()
 
+
     def batch(self, tensors: List[tf.Tensor]) -> List[tf.Tensor]:
         """
         Call PopulationBalanceModel ODE solver for batch data
@@ -60,10 +61,9 @@ class PopulationBalanceModel:
         # Run loop for batch size
         x_out = tf.map_fn(fun, train_indexes, dtype=tf.float32)
         # Extract PSD distribution (ensure solution contains no negative)
-        n_out = tf.maximum(tf.zeros_like(x_out[:, :self.system.domain.axis[0].m]),
-                           x_out[:, :self.system.domain.axis[0].m])
+        n_out = tf.nn.relu(x_out[..., :self.system.domain.axis[0].m])
         # Get remaining process state variable predictions
-        x_out_pv = x_out[:, self.system.domain.axis[0].m:]
+        x_out_pv = x_out[..., self.system.domain.axis[0].m:]
         return [n_out, x_out_pv]
 
     def ode_solver(self, train_index: tf.Tensor, tensors: List[tf.Tensor]) -> tf.Tensor:
@@ -77,7 +77,6 @@ class PopulationBalanceModel:
         Returns:
             tensor: Tensor of process state predictions after time horizon
         """
-
         # Unpack and define the training example data
         n0 = tensors[0][train_index, :]  # Initial PSD
         process_variables_initial = tensors[1][train_index, 0, :]  # Initial PV's
@@ -88,33 +87,16 @@ class PopulationBalanceModel:
         shrinkage_rates = tensors[5][train_index, :]  # Rate tensor for shrinkage rate
         agglomeration_rates = tensors[6][train_index, :]  # Rate tensor for agglomeration rate
         breakage_rates = tensors[7][train_index, :]  # Rate tensor for breakage rate
-
         # Initial time for ODE
         t0 = tf.zeros([], dtype=tf.float32)
         # Initial state (merge n0 and initial process variables)
         x0 = tf.concat([n0, process_variables_initial], axis=0)
-        # Fixed time-steps for ODE solver (linear grid)
-        tspan = tf.linspace(t0, tf.reshape(dt, []), num=self.system.ode_settings.time_steps)
         # Solve system of ODE equations
-        if self.system.ode_settings.variable_stepsize:
-            (x1, report) = ts.integrate.odeint(lambda n, t: self.ode(n, t, process_variables_derivative,
-                                                                     nucleation_rates, growth_rates,
-                                                                     shrinkage_rates, agglomeration_rates,
-                                                                     breakage_rates),
-                                               x0,
-                                               tspan,
-                                               method='dopri5',
-                                               full_output=True,
-                                               rtol=self.system.ode_settings.rel_tol,
-                                               atol=self.system.ode_settings.abs_tol)
-        else:
-            x1 = ts.integrate.odeint_fixed(lambda n, t: self.ode(n, t, process_variables_derivative,
-                                                                 nucleation_rates, growth_rates,
-                                                                 shrinkage_rates, agglomeration_rates,
-                                                                 breakage_rates),
-                                           x0,
-                                           tspan,
-                                           method='rk4')
+        x1 = tfp.math.ode.BDF().solve(lambda t, x: self.ode(x, t, process_variables_derivative,
+                                                            nucleation_rates, growth_rates,
+                                                            shrinkage_rates, agglomeration_rates,
+                                                            breakage_rates),
+                                      initial_time=0, initial_state=x0, solution_times=dt).states
         # Extract solution for t=t+dt
         x1 = tf.reshape(x1[-1, :], [tf.size(x0)])
         return x1
@@ -139,20 +121,20 @@ class PopulationBalanceModel:
         """
 
         # Initialize RHS
-        dndt = tf.zeros(self.system.domain.axis[0].m, dtype=tf.float32)
-        dx_pvdt = process_variables_derivative
         n = x[:self.system.domain.axis[0].m]
         x_pv = x[self.system.domain.axis[0].m:]
+        dndt = tf.zeros(self.system.domain.axis[0].m, dtype=tf.float32)
+        dx_pvdt = process_variables_derivative
 
         # If prediction model prediction of rates
-        if self.rate_model is not None:
-            rate_model_input = [tf.expand_dims(tf.stack([x_pv, dx_pvdt], axis=0), axis=0), tf.expand_dims(n, axis=0)]
-            rates = self.rate_model(rate_model_input)
-            nucleation_rate = rates[0][0]
-            growth_rate = rates[1][0]
-            shrinkage_rate = rates[2][0]
-            agglomeration_rate = rates[3][0]
-            breakage_rate = rates[4][0]
+        # if self.rate_model is not None:
+        #     rate_model_input = [tf.expand_dims(tf.stack([x_pv, dx_pvdt], axis=0), axis=0), tf.expand_dims(n, axis=0)]
+        #     rates = self.rate_model(rate_model_input)
+        #     nucleation_rate = rates[0][0]
+        #     growth_rate = rates[1][0]
+        #     shrinkage_rate = rates[2][0]
+        #     agglomeration_rate = rates[3][0]
+        #     breakage_rate = rates[4][0]
 
         # Phenomena rates
         if self.system.phenomena['nucleation']:
@@ -193,8 +175,6 @@ class PopulationBalanceModel:
         return birth - death
 
     def agglomeration(self, n, rate):
-        # Set max agglomeration rate to 1e-7
-        #rate = tf.minimum(rate, tf.ones_like(rate)*1e-7)
         # Transform rate to rate-matrix
         rate_upper_triangular = tfp.math.fill_triangular(rate, upper=True)
         # Agglomeration calculations
@@ -203,7 +183,7 @@ class PopulationBalanceModel:
         # Calculate birth and death
         #birth = tf.einsum('ijk,jk->i', self.agglomeration_contribution, delta_function*frequency_matrix) #delta_function
         birth = tf.einsum('ijk,jk->i', self.agglomeration_contribution, delta_function*frequency_matrix)
-        death = n*tf.einsum('k,ik->i', n, rate_upper_triangular+tf.transpose(rate_upper_triangular*(tf.constant(1, dtype=tf.float32)-tf.eye(30))))/tf.reduce_sum(n)
+        death = n*tf.einsum('k,ik->i', n, rate_upper_triangular+tf.transpose(rate_upper_triangular*(tf.constant(1, dtype=tf.float32)-tf.eye(self.system.domain.axis[0].m))))/tf.reduce_sum(n)
         #death = tf.einsum('ik->i', frequency_matrix)
         return birth - death
 
@@ -278,6 +258,11 @@ class PopulationBalanceModel:
                                                        nucleation_rates, growth_rates,
                                                        shrinkage_rates, agglomeration_rates,
                                                        breakage_rates])
+        # z_1 = Lambda(self.parallelized_solver, output_shape=self.output_shape,
+        #              name='Population_balance_model')([initial_distribution, process_variables, time,
+        #                                                nucleation_rates, growth_rates,
+        #                                                shrinkage_rates, agglomeration_rates,
+        #                                                breakage_rates])
         # Divide output
         predicted_distribution = z_1[0]
         predicted_pv = z_1[1]

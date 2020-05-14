@@ -25,7 +25,7 @@ class Domain:
         Args:
             name: Domain name (optional)
         """
-        self.axis: List[Axis] or List[GeometricAxis] = []
+        self.axis: List[LinearAxis or GeometricAxis] = []
         self.axis_counter = 0
         self.name = name or 'Domain'
         print(self.name, 'has been successfully created')
