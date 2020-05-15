@@ -12,8 +12,8 @@ from tensorflow.keras import Model
 from hybrid_model.System import System
 from typing import Dict, List
 from tensorflow.keras.layers import Input, Lambda
-import tensorflow_scientific as ts
 import tensorflow_probability as tfp
+import tensorflow_scientific as ts
 
 
 class PopulationBalanceModel:
@@ -81,22 +81,36 @@ class PopulationBalanceModel:
         n0 = tensors[0][train_index, :]  # Initial PSD
         process_variables_initial = tensors[1][train_index, 0, :]  # Initial PV's
         process_variables_derivative = tensors[1][train_index, 1, :]  # PV time-derivatives
-        dt = tensors[2][train_index]  # Time horizon
+        dt = tensors[2][train_index, :]  # Time horizon
         nucleation_rates = tensors[3][train_index, :]  # Rate tensor for nucleation rate
         growth_rates = tensors[4][train_index, :]  # Rate tensor for growth rate
         shrinkage_rates = tensors[5][train_index, :]  # Rate tensor for shrinkage rate
         agglomeration_rates = tensors[6][train_index, :]  # Rate tensor for agglomeration rate
         breakage_rates = tensors[7][train_index, :]  # Rate tensor for breakage rate
-        # Initial time for ODE
-        t0 = tf.zeros([], dtype=tf.float32)
         # Initial state (merge n0 and initial process variables)
         x0 = tf.concat([n0, process_variables_initial], axis=0)
+
+        # Fixed time-steps for ODE solver (linear grid)
+        t0 = tf.zeros([], dtype=tf.float32)
+        t1 = tf.reshape(dt[:], [])
+        tspan = tf.linspace(t0, tf.reshape(dt, []), num=self.system.ode_settings.time_steps)
+        (x1, report) = ts.integrate.odeint(lambda n, t: self.ode(n, t, process_variables_derivative,
+                                                                 nucleation_rates, growth_rates,
+                                                                 shrinkage_rates, agglomeration_rates,
+                                                                 breakage_rates),
+                                           x0,
+                                           tspan,
+                                           method='dopri5',
+                                           full_output=True,
+                                           rtol=self.system.ode_settings.rel_tol,
+                                           atol=self.system.ode_settings.abs_tol)
+
         # Solve system of ODE equations
-        x1 = tfp.math.ode.BDF().solve(lambda t, x: self.ode(x, t, process_variables_derivative,
-                                                            nucleation_rates, growth_rates,
-                                                            shrinkage_rates, agglomeration_rates,
-                                                            breakage_rates),
-                                      initial_time=0, initial_state=x0, solution_times=dt).states
+        # x1 = tfp.math.ode.BDF().solve(lambda t, x: self.ode(x, t, process_variables_derivative,
+        #                                                     nucleation_rates, growth_rates,
+        #                                                     shrinkage_rates, agglomeration_rates,
+        #                                                     breakage_rates),
+        #                               initial_time=0, initial_state=x0, solution_times=dt).states
         # Extract solution for t=t+dt
         x1 = tf.reshape(x1[-1, :], [tf.size(x0)])
         return x1
@@ -258,11 +272,6 @@ class PopulationBalanceModel:
                                                        nucleation_rates, growth_rates,
                                                        shrinkage_rates, agglomeration_rates,
                                                        breakage_rates])
-        # z_1 = Lambda(self.parallelized_solver, output_shape=self.output_shape,
-        #              name='Population_balance_model')([initial_distribution, process_variables, time,
-        #                                                nucleation_rates, growth_rates,
-        #                                                shrinkage_rates, agglomeration_rates,
-        #                                                breakage_rates])
         # Divide output
         predicted_distribution = z_1[0]
         predicted_pv = z_1[1]

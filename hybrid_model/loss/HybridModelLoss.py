@@ -55,10 +55,10 @@ class HybridModelLoss:
 
         if self.system.normalize:
             loss = loss / 2 * 100
-        else:
-            number_particles = tf.reduce_sum(y_true, axis=[-1])
-            number_particles = tf.maximum(tf.ones_like(number_particles, dtype=tf.float32), number_particles)
-            loss = loss / number_particles
+        # else:
+        #     number_particles = tf.reduce_sum(y_true, axis=[-1])
+        #     number_particles = tf.maximum(tf.ones_like(number_particles, dtype=tf.float32), number_particles)
+        #     loss = loss / number_particles
         return loss
 
     def convert_distribution(self, y: tf.Tensor, probability_type: str, geometry: str) -> tf.Tensor:

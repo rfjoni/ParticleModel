@@ -59,10 +59,10 @@ class LactoseCrystallizer:
         self.output = None
         self.noise_level = noise_level
         self.initialized = True
-        if not self.verbose:
+        if self.verbose:
             print('New batch started')
-        measurement_object = self.model.measurement_object(self.t0_sim,
-                                                           self.x0,
+        measurement_object = self.model.measurement_object(np.expand_dims(self.t0_sim,axis=-1),
+                                                           np.expand_dims(self.x0,axis=-1),
                                                            noise_level=self.noise_level)
         return measurement_object
 
@@ -70,7 +70,6 @@ class LactoseCrystallizer:
         if self.initialized:
             # Run simulation
             self.output = self.model.solve_ode(t0=self.t0_sim, timestep=self.step_size, x0=self.x_sim, z=[z])
-            print(self.output)
             # Set new simulation parameters
             self.x_sim = self.output.y[:, -1]
             self.t0_sim = self.output.t[-1]
@@ -78,11 +77,11 @@ class LactoseCrystallizer:
             if self.save_intermediates:
                 self.x_col.append(self.output.y)
                 self.t_col.append(self.output.t)
-            if not self.verbose:
+            if self.verbose:
                 print(self.output.message)
             measurement_object = self.model.measurement_object(self.output.t, self.output.y,
                                                                noise_level=self.noise_level)
             return measurement_object
         else:
-            if not self.verbose:
+            if self.verbose:
                 print('Batch not initialized!')

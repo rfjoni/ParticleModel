@@ -43,7 +43,7 @@ class RateModel():
                                                       rate_sizes['breakage']], axis=1),
                        name='Rate_splitter')(rates)
         # Calculate individual rates
-        nucleation_rate = Lambda(lambda rate: tf.abs(tf.multiply(rate,self.system.rate_settings.scaling_factors['nucleation'])),
+        nucleation_rate = Lambda(lambda rate: tf.abs(tf.multiply(rate, self.system.rate_settings.scaling_factors['nucleation'])),
                                  name='Nucleation_rate')(rates[0])
         growth_rate = Lambda(lambda rate: tf.abs(tf.multiply(rate, self.system.rate_settings.scaling_factors['growth'])),
                              name='Growth_rate')(rates[1])

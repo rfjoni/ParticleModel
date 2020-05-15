@@ -173,7 +173,7 @@ class Illustration:
             plt.xticks(rotation=-45)
             return fig
 
-    def plot_count_time(self, variable_name: str, category: str, batch_ids: list = None, lb: float = 0, ub: float = np.inf,):
+    def plot_count_time(self, variable_name: str, category: str, batch_ids: list = None, lb: float = 0, ub: float = np.inf):
         # Call data-set
         [external_data, particle_analysis, image_data] = self.data_to_lists(batch_ids)
         if category == 'particle_analysis':

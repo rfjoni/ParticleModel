@@ -5,10 +5,8 @@ This module contains the model structure generator for the hybrid particle model
 
 """
 # Importing dependencies
-import os
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
+
 import logging
-logging.getLogger("tensorflow").setLevel(logging.WARNING)
 from hybrid_model.layers.PopulationBalanceModel import PopulationBalanceModel
 from hybrid_model.layers.ConcentrationModel import ConcentrationModel
 from hybrid_model.layers.UncertaintyModel import UncertaintyModel
@@ -23,6 +21,8 @@ import tensorflow as tf
 import numpy as np
 import pickle
 import gc
+logger = tf.get_logger()
+logger.setLevel(logging.ERROR)
 
 class HybridModel:
     def __init__(self, system: System) -> None:
@@ -244,9 +244,11 @@ class HybridModel:
         if category == 'train':
             self.ref_loss_train = {'Reference loss': reference_loss,
                                    'Average loss': av_reference_loss}
+            print('Training reference error: ' + str(self.ref_loss_train['Average loss']))
         elif category == 'val':
             self.ref_loss_val = {'Reference loss': reference_loss,
                                  'Average loss': av_reference_loss}
+            print('Validation reference error: ' + str(self.ref_loss_val['Average loss']))
         else:
             print('category not properly set')
 
