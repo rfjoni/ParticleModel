@@ -89,10 +89,8 @@ class PopulationBalanceModel:
         breakage_rates = tensors[7][train_index, :]  # Rate tensor for breakage rate
         # Initial state (merge n0 and initial process variables)
         x0 = tf.concat([n0, process_variables_initial], axis=0)
-
         # Fixed time-steps for ODE solver (linear grid)
         t0 = tf.zeros([], dtype=tf.float32)
-        t1 = tf.reshape(dt[:], [])
         tspan = tf.linspace(t0, tf.reshape(dt, []), num=self.system.ode_settings.time_steps)
         (x1, report) = ts.integrate.odeint(lambda n, t: self.ode(n, t, process_variables_derivative,
                                                                  nucleation_rates, growth_rates,
@@ -104,13 +102,6 @@ class PopulationBalanceModel:
                                            full_output=True,
                                            rtol=self.system.ode_settings.rel_tol,
                                            atol=self.system.ode_settings.abs_tol)
-
-        # Solve system of ODE equations
-        # x1 = tfp.math.ode.BDF().solve(lambda t, x: self.ode(x, t, process_variables_derivative,
-        #                                                     nucleation_rates, growth_rates,
-        #                                                     shrinkage_rates, agglomeration_rates,
-        #                                                     breakage_rates),
-        #                               initial_time=0, initial_state=x0, solution_times=dt).states
         # Extract solution for t=t+dt
         x1 = tf.reshape(x1[-1, :], [tf.size(x0)])
         return x1
@@ -141,14 +132,14 @@ class PopulationBalanceModel:
         dx_pvdt = process_variables_derivative
 
         # If prediction model prediction of rates
-        # if self.rate_model is not None:
-        #     rate_model_input = [tf.expand_dims(tf.stack([x_pv, dx_pvdt], axis=0), axis=0), tf.expand_dims(n, axis=0)]
-        #     rates = self.rate_model(rate_model_input)
-        #     nucleation_rate = rates[0][0]
-        #     growth_rate = rates[1][0]
-        #     shrinkage_rate = rates[2][0]
-        #     agglomeration_rate = rates[3][0]
-        #     breakage_rate = rates[4][0]
+        if self.rate_model is not None:
+            rate_model_input = [tf.expand_dims(tf.stack([x_pv, dx_pvdt], axis=0), axis=0), tf.expand_dims(n, axis=0)]
+            rates = self.rate_model(rate_model_input)
+            nucleation_rate = rates[0][0]
+            growth_rate = rates[1][0]
+            shrinkage_rate = rates[2][0]
+            agglomeration_rate = rates[3][0]
+            breakage_rate = rates[4][0]
 
         # Phenomena rates
         if self.system.phenomena['nucleation']:
@@ -161,8 +152,6 @@ class PopulationBalanceModel:
             dndt = dndt + self.agglomeration(n, agglomeration_rate)
         if self.system.phenomena['breakage']:
             dndt = dndt + self.breakage(n, breakage_rate)
-        #dx_pvdt = dx_pvdt + tf.constant([0.0, -1.52/(4500*1408*800)],
-        #                                dtype=tf.float32)*tf.reduce_sum(dndt*tf.constant(self.system.domain.axis[0].midpoints()**3, dtype=tf.float32))
         return tf.concat([dndt, dx_pvdt], axis=-1)
 
     def nucleation(self, n, rate):
